@@ -120,10 +120,6 @@ def write_as_ome_zarr(out_path: Union[str, bytes, PathLike], images: List[NDArra
     #}
 
 
-def read_volume(file_path, data_type=sitk.sitkUInt16) -> sitk.Image:
-    return sitk.ReadImage(file_path, data_type)  # read and cast to dtype
-
-
 # https://discourse.itk.org/t/resample-volume-to-specific-voxel-spacing-simpleitk/3531
 def resample_volume(volume: sitk.Image, interpolator=sitk.sitkLinear, new_spacing=None) -> sitk.Image:
     if new_spacing is None:
@@ -291,7 +287,7 @@ def main(argv=None):
 
 
 # https://simpleitk.readthedocs.io/en/master/link_RawImageReading_docs.html
-def read_raw(
+def read_raw_image(
     binary_file_name,
     image_size,
     sitk_pixel_type,
@@ -383,6 +379,22 @@ def read_raw(
     return img
 
 
+ShapeLike = Union[List[int], Tuple[int, int, int]]
+
+
+def compute_multiscale_3d(input_shape: ShapeLike, target_shape: ShapeLike) -> List[ShapeLike]:
+    last_shape = input_shape
+    scales = [[1., 1., 1.]]
+
+    while any([last_shape[i] > target_shape[i] for i in range(3)]):
+        last_scale = scales[-1:][0]
+        scale = [s * 2. if all([last_shape[i] >= last_shape[j] / 2. for j in range(3) if i != j]) else 1. for i, s in enumerate(last_scale)]
+        scales.append(scale)
+        last_shape = [n / s for n, s in zip(input_shape, scale)]
+
+    return scales
+
+
 if __name__ == '__main__':
     # For raw image (without any headers)
     in_path = "/home/ripley/Documents/data/raw/bunny_512x512x361_uint16.raw"
@@ -398,22 +410,21 @@ if __name__ == '__main__':
     #    tile_shape
     #)
 
-    input_shape = 316, 512, 512,
-    current_shape = input_shape
+    input_shape = 361, 512, 512,
     target_shape = 32, 32, 32,
-    spacings = [[1., 1., 1.]]
+    multiscale = compute_multiscale_3d(input_shape, target_shape)
 
-    while any([current_shape[i] > target_shape[i] for i in range(3)]):
-        last_spacing = spacings[-1:][0]
-        spacing = [s * 2. if all([current_shape[i] >= current_shape[j] / 2. for j in range(3) if i != j]) else 1. for i, s in enumerate(last_spacing)]
-        spacings.append(spacing)
-        current_shape = [n / s for n, s in zip(input_shape, spacing)]
+    numpy_volume = read_raw(in_path, input_shape, dtype)
 
-    volume = read_raw(in_path, list(shape[2:]), sitk.sitkUInt16)
+    print(np.shape(numpy_volume))
+
+    volume = sitk.GetImageFromArray(numpy_volume)  # read_raw(in_path, list(shape[2:]), sitk.sitkUInt16)
     print(np.shape(sitk_to_numpy(volume)))
 
-    for s in spacings:
-        resampled = resample_volume(volume, new_spacing=s)
+    for s in multiscale:
+        scale = s.copy()
+        scale.reverse()
+        resampled = resample_volume(volume, new_spacing=scale)
         print(np.shape(sitk_to_numpy(resampled)))
 
 
