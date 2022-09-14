@@ -12,11 +12,12 @@ pip install -r requirements.txt
 ```
 create_ome_zarr_from_raw.py
     [-h]
-    [--chunksize CHUNKSIZE CHUNKSIZE CHUNKSIZE]
+    [--chunksize CHUNKSIZE_Z CHUNKSIZE_Y CHUNKSIZE_X]
+    [--transform TRANSFORM_Z TRANSFORM_Y TRANSFORM_X]
     [--interpolator {nearest,linear,gaussian,label_gaussian,bspline,bspline1,bspline2,bspline3,bspline4,bspline5,hamming,cosine,welch,lanczos,blackman,bspline_resampler,bspline_resampler_order1,bspline_resampler_order2,bspline_resampler_order3,bspline_resampler_order4,bspline_resampler_order5}]
     [--numduplicates NUMDUPLICATES]
     [--axisorder AXISORDER]
-    --size SIZE SIZE SIZE
+    --size SIZE_Z SIZE_Y SIZE_X
     --dtype {uint16,uint8,float}
     --outpath OUTPATH
     [files ...]
@@ -40,6 +41,9 @@ create_ome_zarr_from_raw.py
 ### Optional Arguments:
 ```
   -h, --help            show this help message and exit
+  --transform TRANSFORM_Z TRANSFORM_Y TRANSFORM_X, -t TRANSFORM_Z TRANSFORM_Y TRANSFORM_X
+                        The scaling that should be applied to each path in the OME-Zarr data set. Defaults to [1., 1., 1.]
+
   --chunksize CHUNKSIZE_Z CHUNKSIZE_Y CHUNKSIZE_X, -c CHUNKSIZE_Z CHUNKSIZE_Y CHUNKSIZE_X
                         The size of a chunk / brick in the OME-Zarr data set. Defaults to [32, 32, 32]
   --interpolator {nearest,linear,gaussian,label_gaussian,bspline,bspline1,bspline2,bspline3,bspline4,bspline5,hamming,cosine,welch,lanczos,blackman,bspline_resampler,bspline_resampler_order1,bspline_resampler_order2,bspline_resampler_order3,bspline_resampler_order4,bspline_resampler_order5}, -i {nearest,linear,gaussian,label_gaussian,bspline,bspline1,bspline2,bspline3,bspline4,bspline5,hamming,cosine,welch,lanczos,blackman,bspline_resampler,bspline_resampler_order1,bspline_resampler_order2,bspline_resampler_order3,bspline_resampler_order4,bspline_resampler_order5}
@@ -53,3 +57,14 @@ create_ome_zarr_from_raw.py
 ## Example Data
 Example data can be found here:
  - [Open Scientific Visualization Datasets](https://klacansky.com/open-scivis-datasets/)
+
+E.g., for creating an OME-Zarr data set with two channels from the [bunny data set](http://cdn.klacansky.com/open-scivis-datasets/bunny/bunny_512x512x361_uint16.raw) run:
+```
+    python src/create_ome_zarr_from_raw.py \
+        -s 361 512 512 \
+        -d uint16 \
+        -t 0.5 0.337891 0.337891 \
+        -n 2 \
+        -o /tmp/bunny.zarr\
+        bunny_512x512x361_uint16.raw
+```

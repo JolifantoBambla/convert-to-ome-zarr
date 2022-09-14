@@ -1,6 +1,6 @@
 import argparse
 from os import PathLike
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Dict, Any
 
 import numpy as np
 from numpy.typing import DTypeLike, NDArray
@@ -33,12 +33,14 @@ def move_axes(arr: NDArray, input_axes: str, target_axes='STCZYX') -> NDArray:
     return np.moveaxis(arr, [target_axes.index(axis_name) for axis_name in input_axes], np.arange(len(target_axes)))
 
 
-def write_as_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: ShapeLike5d):
+def write_as_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: ShapeLike5d,
+                      coordinate_transformations: List[List[Dict[str, Any]]] = None):
     """
 
     :param out_path:
     :param pyramid:
     :param chunk_shape: (depth, height, width)
+    :param coordinate_transformations:
     """
 
     kwargs = {}
@@ -52,6 +54,7 @@ def write_as_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: S
         chunks=chunk_shape,
         # according to the docs this is the recommended way to specify the chunk shape now, but it has no effect...
         storage_options=dict(chunks=chunk_shape),
+        coordinateTransformations=coordinate_transformations,
     )
     #root.attrs["omero"] = {
     #    "channels": [{
@@ -83,7 +86,7 @@ def resample_volume(volume: sitk.Image, interpolator=sitk.sitkLinear, new_spacin
     )
 
 
-def compute_multiscale_3d(input_shape: ShapeLike3d, target_shape: ShapeLike3d) -> List[ShapeLike3d]:
+def compute_multiscale_3d(input_shape: ShapeLike3d, target_shape: ShapeLike3d,) -> List[ShapeLike3d]:
     last_shape = input_shape
     scales = [[1., 1., 1.]]
 
@@ -98,6 +101,7 @@ def compute_multiscale_3d(input_shape: ShapeLike3d, target_shape: ShapeLike3d) -
 
 def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: DTypeLike, out_path: FilePath,
                              chunk_shape: ShapeLike3d = None,
+                             coordinate_transformations: List[List[Dict[str, Any]]] = None,
                              axis_order='ZYX',
                              interpolator=sitk.sitkLinear):
     assert len(axis_order) == 3, f'Expected axis order to have length 3, got {axis_order}'
@@ -137,7 +141,7 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
                 level = j + 1
                 pyramid[level] = np.append(pyramid[level], resampled, axis=1)
 
-    write_as_ome_zarr(out_path, pyramid, chunk_shape_5d)
+    write_as_ome_zarr(out_path, pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
 
 
 if __name__ == '__main__':
@@ -183,6 +187,14 @@ if __name__ == '__main__':
         nargs=3,
         default=[32, 32, 32],
         help="The size of a chunk / brick in the OME-Zarr data set. Defaults to [32, 32, 32]"
+    )
+    parser.add_argument(
+        "--transform",
+        "-t",
+        type=float,
+        nargs=3,
+        default=None,
+        help="The scaling that should be applied to each path in the OME-Zarr data set. Defaults to [1., 1., 1.]"
     )
     parser.add_argument(
         "--interpolator",
@@ -238,9 +250,17 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
+    transformations = None
+    if args.transform is not None:
+        transform = args.transform
+        transform.insert(0, 1.)
+        transform.insert(0, 1.)
+        transformations = [dict(type="scale", scale=transform)]
+
     create_ome_zarr_from_raw([f for f in args.files for _ in range(args.numduplicates)],
                              args.size,
                              dtype_mapping[args.dtype],
                              args.outpath,
                              chunk_shape=args.chunksize,
-                             interpolator=interpolator_mapping[args.interpolator])
+                             interpolator=interpolator_mapping[args.interpolator],
+                             coordinate_transformations=transformations)
