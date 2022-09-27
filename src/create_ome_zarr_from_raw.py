@@ -124,6 +124,7 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
     multiscale = compute_multiscale_3d(shape, chunk_shape)
     pyramid = []
     for i, f in enumerate(files):
+        # todo: Allow larger data sets #3
         volume = move_axes(read_raw(f, shape_5d, dtype), f'TC{axis_order}')
         volume_sitk = sitk.GetImageFromArray(volume.reshape(shape))
 
