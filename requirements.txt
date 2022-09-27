@@ -1,5 +1,6 @@
-numpy
-ome_zarr
-SimpleITK
-tifffile
-zarr
+numpy==1.23.3
+ome_zarr==0.6.0
+pyometiff==0.0.10
+SimpleITK==2.2.0
+tifffile==2022.8.12
+zarr==2.12.0

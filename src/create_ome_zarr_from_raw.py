@@ -47,6 +47,17 @@ def write_as_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: S
 
     store = parse_url(out_path, mode="w").store
     root = zarr.group(store=store)
+
+    # todo: Create omero meta data from OME-XML or from OME-Tiff meta data #1
+    #root.attrs["omero"] = {
+    #    "channels": [{
+    #        "color": "00FFFF",
+    #        "window": {"start": 0, "end": 20},
+    #        "label": "random",
+    #        "active": True,
+    #    }]
+    #}
+
     write_multiscale(
         pyramid=pyramid,
         group=root,
@@ -56,14 +67,6 @@ def write_as_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: S
         storage_options=dict(chunks=chunk_shape),
         coordinateTransformations=coordinate_transformations,
     )
-    #root.attrs["omero"] = {
-    #    "channels": [{
-    #        "color": "00FFFF",
-    #        "window": {"start": 0, "end": 20},
-    #        "label": "random",
-    #        "active": True,
-    #    }]
-    #}
 
 
 # https://discourse.itk.org/t/resample-volume-to-specific-voxel-spacing-simpleitk/3531
@@ -129,7 +132,7 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
         else:
             pyramid[0] = np.append(pyramid[0], volume, axis=1)
 
-        for j, s in enumerate(multiscale):
+        for j, s in enumerate(multiscale[1:]):
             scale = s.copy()
             scale.reverse()
             resampled = sitk.GetArrayFromImage(resample_volume(volume_sitk, new_spacing=scale, interpolator=interpolator))
@@ -145,7 +148,7 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
 
 
 if __name__ == '__main__':
-    # todo: allow more dtypes
+    # todo: Allow more dtypes #2
     dtype_mapping = {
         'uint16': np.uint16,
         'uint8': np.uint8,
@@ -205,6 +208,16 @@ if __name__ == '__main__':
         help="The interpolator that is used to down sample input data sets to create a multi-resolution hierarchy. "
              "Defaults to \"linear\"."
     )
+
+    # todo: Create omero meta data from OME-XML or from OME-Tiff meta data #1
+    #parser.add_argument(
+    #    "--omexml",
+    #    "-x",
+    #    type=str,
+    #    help="An optional OME-XML file containing meta data. It is used to generate an \"omero\" meta data block in the"
+    #         "OME-Zarr."
+    #)
+
     parser.add_argument(
         "--numduplicates",
         "-n",
