@@ -6,6 +6,7 @@ import numpy as np
 from numpy.typing import DTypeLike, NDArray
 from ome_zarr.io import parse_url
 from ome_zarr.writer import write_multiscale
+import tifffile as tf
 import SimpleITK as sitk
 import zarr
 
@@ -30,7 +31,16 @@ def move_axes(arr: NDArray, input_axes: str, target_axes='STCZYX') -> NDArray:
     if input_axes == target_axes:
         return arr
 
-    return np.moveaxis(arr, [target_axes.index(axis_name) for axis_name in input_axes], np.arange(len(target_axes)))
+    data_shape = list(arr.shape)
+    if len(data_shape) < len(input_axes):
+        for i in range(len(input_axes) - len(arr.shape)):
+            data_shape.insert(0, 1)
+
+    return np.moveaxis(
+        arr if len(data_shape) == len(arr.shape) else arr.reshape(data_shape),
+        [target_axes.index(axis_name) for axis_name in input_axes],
+        np.arange(len(target_axes))
+    )
 
 
 def write_as_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: ShapeLike5d,
@@ -146,6 +156,17 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
                 pyramid[level] = np.append(pyramid[level], resampled, axis=1)
 
     write_as_ome_zarr(out_path, pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
+
+
+def create_ome_zarr_from_ome_tiff(file: FilePath, out_path: FilePath,
+                                  chunk_shape: ShapeLike3d = None,
+                                  coordinate_transformations: List[List[Dict[str, Any]]] = None,
+                                  axis_order='CZYX',
+                                  interpolator=sitk.sitkLinear):
+    data = move_axes(tf.imread(file), 'CZYX'[:4-len(axis_order)] + axis_order.upper())
+
+    shape_5d = data.shape
+    print(shape_5d)
 
 
 if __name__ == '__main__':
@@ -271,10 +292,20 @@ if __name__ == '__main__':
         transform.insert(0, 1.)
         transformations = [dict(type="scale", scale=transform)]
 
-    create_ome_zarr_from_raw([f for f in args.files for _ in range(args.numduplicates)],
-                             args.size,
-                             dtype_mapping[args.dtype],
-                             args.outpath,
-                             chunk_shape=args.chunksize,
-                             interpolator=interpolator_mapping[args.interpolator],
-                             coordinate_transformations=transformations)
+
+    # todo: split into separate files
+    if args.files[0].endswith('tiff') or args.files[0].endswith('tif'):
+        create_ome_zarr_from_ome_tiff(args.files[0],
+                                      args.outpath,
+                                      axis_order='ZCYX',
+                                      chunk_shape=args.chunksize,
+                                      interpolator=interpolator_mapping[args.interpolator],
+                                      coordinate_transformations=transformations)
+    else:
+        create_ome_zarr_from_raw([f for f in args.files for _ in range(args.numduplicates)],
+                                 args.size,
+                                 dtype_mapping[args.dtype],
+                                 args.outpath,
+                                 chunk_shape=args.chunksize,
+                                 interpolator=interpolator_mapping[args.interpolator],
+                                 coordinate_transformations=transformations)
