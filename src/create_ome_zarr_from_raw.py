@@ -158,15 +158,44 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
     write_as_ome_zarr(out_path, pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
 
 
+# todo: this is basically the same as create_ome_zarr_from_raw -> refactor
 def create_ome_zarr_from_ome_tiff(file: FilePath, out_path: FilePath,
                                   chunk_shape: ShapeLike3d = None,
                                   coordinate_transformations: List[List[Dict[str, Any]]] = None,
                                   axis_order='CZYX',
                                   interpolator=sitk.sitkLinear):
+    # todo: most (all?) meta data can be read from the tiff itself
+    #tiff = tf.TiffFile(file)
+    #axis_order = 'CZYX'[:4-len(tiff.series[0].axes)] + tiff.series[0].axes.upper()
+    #print(axis_order, tiff.series[0].shape, tiff.pages[0].shape, len(tiff.pages), 105*15, len(tiff.series))
+
     data = move_axes(tf.imread(file), 'CZYX'[:4-len(axis_order)] + axis_order.upper())
 
-    shape_5d = data.shape
-    print(shape_5d)
+    shape_4d = data.shape
+    shape_3d = shape_4d[1:]
+    shape_5d = [1] + list(shape_4d)
+    chunk_shape_5d = [1, 1] + list(chunk_shape)
+
+    multiscale = compute_multiscale_3d(shape_3d, chunk_shape)
+    pyramid = [data.reshape(shape_5d)]
+    for i in range(shape_4d[0]):
+        volume = data[i]
+        volume_sitk = sitk.GetImageFromArray(volume)
+
+        for j, s in enumerate(multiscale[1:]):
+            scale = s.copy()
+            scale.reverse()
+            resampled = sitk.GetArrayFromImage(
+                resample_volume(volume_sitk, new_spacing=scale, interpolator=interpolator))
+            resampled = resampled.reshape([1, 1] + list(resampled.shape))
+
+            if i == 0:
+                pyramid.append(resampled)
+            else:
+                level = j + 1
+                pyramid[level] = np.append(pyramid[level], resampled, axis=1)
+
+    write_as_ome_zarr(out_path, pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
 
 
 if __name__ == '__main__':
