@@ -164,22 +164,20 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
 
 
 def combine_ome_zarr_channels(out_path: FilePath, num_scales: int, target_shape: ShapeLike5d):
-    # todo: rename {out_path}_channel_0 to {out_path}
     os.replace(f'{out_path}_channel_0', f'{out_path}')
 
-    # todo: for s in range(num_scales): set "shape"[1] to target_shape[1] in {out_path}/{s}/.zarray
     for s in range(num_scales):
-        with open(f'{out_path}/{s}/.zarray', 'w+') as zarray_file:
+        with open(f'{out_path}/{s}/.zarray', 'r') as zarray_file:
             meta = json.load(zarray_file)
-            meta['shape'][1] = target_shape[1]
+
+        meta['shape'][1] = target_shape[1]
+        with open(f'{out_path}/{s}/.zarray', 'w') as zarray_file:
             json.dump(meta, zarray_file, sort_keys=True, indent=4)
 
-    # todo: for c in range(1, target_shape[1]):
-    # todo:     for s in range(num_scales): mv {out_path}_channel_{c}/{s}/0/0 {out_path}/{s}/0/{i}
     for c in range(1, target_shape[1]):
         for s in range(num_scales):
             shutil.move(f'{out_path}_channel_{c}/{s}/0/0', f'{out_path}/{s}/0/{c}')
-        os.rmdir(f'{out_path}_channel_{c}')
+        shutil.rmtree(f'{out_path}_channel_{c}')
 
 
 def create_ome_zarr_from_imaris(file: FilePath, out_path: FilePath,
@@ -228,7 +226,9 @@ def create_ome_zarr_from_imaris(file: FilePath, out_path: FilePath,
             write_as_ome_zarr(f'{out_path}_channel_{i}', pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
         print('finish channel', i)
 
-    if not write_channels_as_separate_files:
+    if write_channels_as_separate_files:
+        combine_ome_zarr_channels(out_path, len(multiscale), shape_5d)
+    else:
         write_as_ome_zarr(out_path, pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
 
 
