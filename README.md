@@ -6,9 +6,57 @@ Create OME-Zarr data sets from raw volumetric data.
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install .
 ```
 
 ## Commandline usage
+todo: update readme
+
+### Create OME-Zarr from RAW data set
+```
+python -m bin.create_ome_zarr_from_raw 
+    [-h]
+    [--chunksize CHUNKSIZE CHUNKSIZE CHUNKSIZE]
+    [--transform TRANSFORM TRANSFORM TRANSFORM]
+    [--interpolator {nearest,linear,gaussian,label_gaussian,bspline,bspline1,bspline2,bspline3,bspline4,bspline5,hamming,cosine,welch,lanczos,blackman,bspline_resampler,bspline_resampler_order1,bspline_resampler_order2,bspline_resampler_order3,bspline_resampler_order4,bspline_resampler_order5}]
+    [--numduplicates NUMDUPLICATES]
+    [--axisorder AXISORDER]
+    [--verbose | --no-verbose | -v]
+    [--write_separate_channels | --no-write_separate_channels | -w]
+    --size SIZE SIZE SIZE
+    --dtype {uint16,uint8,float}
+    --outpath OUTPATH
+    [files ...]
+```
+
+### Create OME-Zarr from OME-Tiff data set
+```
+python -m bin.create_ome_zarr_from_ome_tiff
+    [-h]
+    [--chunksize CHUNKSIZE CHUNKSIZE CHUNKSIZE]
+    [--transform TRANSFORM TRANSFORM TRANSFORM]
+    [--interpolator {nearest,linear,gaussian,label_gaussian,bspline,bspline1,bspline2,bspline3,bspline4,bspline5,hamming,cosine,welch,lanczos,blackman,bspline_resampler,bspline_resampler_order1,bspline_resampler_order2,bspline_resampler_order3,bspline_resampler_order4,bspline_resampler_order5}]
+    [--verbose | --no-verbose | -v]
+    [--write_separate_channels | --no-write_separate_channels | -w]
+    --outpath OUTPATH
+    file
+```
+
+### Create OME-Zarr from Imaris data set
+```
+python -m bin.create_ome_zarr_from_imaris
+    [-h]
+    [--chunksize CHUNKSIZE CHUNKSIZE CHUNKSIZE]
+    [--transform TRANSFORM TRANSFORM TRANSFORM]
+    [--interpolator {nearest,linear,gaussian,label_gaussian,bspline,bspline1,bspline2,bspline3,bspline4,bspline5,hamming,cosine,welch,lanczos,blackman,bspline_resampler,bspline_resampler_order1,bspline_resampler_order2,bspline_resampler_order3,bspline_resampler_order4,bspline_resampler_order5}]
+    [--resolution_level_lock RESOLUTION_LEVEL_LOCK]
+    [--verbose | --no-verbose | -v]
+    [--write_separate_channels | --no-write_separate_channels | -w]
+    --outpath OUTPATH
+    file
+```
+
+deprecated:
 ```
 create_ome_zarr_from_raw.py
     [-h]

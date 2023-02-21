@@ -186,7 +186,7 @@ def create_ome_zarr_from_imaris(file: FilePath, out_path: FilePath,
                                 coordinate_transformations: List[List[Dict[str, Any]]] = None,
                                 interpolator=sitk.sitkLinear):
     resolution_level_lock = 0
-    chunk_shape = [128, 128, 128]
+    chunk_shape = [32, 32, 32]
 
     ims_file = ims(file, ResolutionLevelLock=resolution_level_lock)
     shape_5d = ims_file.shape
