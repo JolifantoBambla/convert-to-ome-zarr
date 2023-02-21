@@ -15,3 +15,6 @@ np.any(np.array(ims_file.hf['DataSet']['ResolutionLevel 5']['TimePoint 0']['Chan
 
 np.any(np.array(ims_file.hf['DataSet']['ResolutionLevel 5']['TimePoint 0']['Channel 0']['Data']) == 15)
 # >>> False
+
+ims_file_2 = ims('/home/lherzberger/Data/ims/.ims', ResolutionLevelLock=0)
+channel_1 = np.array(ims_file.hf['DataSet']['ResolutionLevel 0']['TimePoint 0']['Channel 0']['Data'])

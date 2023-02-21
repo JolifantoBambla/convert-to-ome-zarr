@@ -1,7 +1,12 @@
 import argparse
 from os import PathLike
+import os
+import shutil
 from typing import List, Tuple, Union, Dict, Any
 
+import hdf5plugin  # needed for reading ims files (no idea why they wouldn't just import it in 'imaris_ims_file_reader')
+import imaris_ims_file_reader.ims as ims
+import json
 import numpy as np
 from numpy.typing import DTypeLike, NDArray
 from ome_zarr.io import parse_url
@@ -156,6 +161,75 @@ def create_ome_zarr_from_raw(files: List[FilePath], shape: ShapeLike3d, dtype: D
                 pyramid[level] = np.append(pyramid[level], resampled, axis=1)
 
     write_as_ome_zarr(out_path, pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
+
+
+def combine_ome_zarr_channels(out_path: FilePath, num_scales: int, target_shape: ShapeLike5d):
+    # todo: rename {out_path}_channel_0 to {out_path}
+    os.replace(f'{out_path}_channel_0', f'{out_path}')
+
+    # todo: for s in range(num_scales): set "shape"[1] to target_shape[1] in {out_path}/{s}/.zarray
+    for s in range(num_scales):
+        with open(f'{out_path}/{s}/.zarray', 'w+') as zarray_file:
+            meta = json.load(zarray_file)
+            meta['shape'][1] = target_shape[1]
+            json.dump(meta, zarray_file, sort_keys=True, indent=4)
+
+    # todo: for c in range(1, target_shape[1]):
+    # todo:     for s in range(num_scales): mv {out_path}_channel_{c}/{s}/0/0 {out_path}/{s}/0/{i}
+    for c in range(1, target_shape[1]):
+        for s in range(num_scales):
+            shutil.move(f'{out_path}_channel_{c}/{s}/0/0', f'{out_path}/{s}/0/{c}')
+        os.rmdir(f'{out_path}_channel_{c}')
+
+
+def create_ome_zarr_from_imaris(file: FilePath, out_path: FilePath,
+                                write_channels_as_separate_files=True,
+                                chunk_shape: ShapeLike3d = None,
+                                coordinate_transformations: List[List[Dict[str, Any]]] = None,
+                                interpolator=sitk.sitkLinear):
+    resolution_level_lock = 0
+    chunk_shape = [128, 128, 128]
+
+    ims_file = ims(file, ResolutionLevelLock=resolution_level_lock)
+    shape_5d = ims_file.shape
+    chunk_shape_5d = [1, 1] + list(chunk_shape)
+
+    multiscale = compute_multiscale_3d(shape_5d[2:], chunk_shape)
+    pyramid = []
+    print('channels', shape_5d[1], shape_5d[2:])
+    for i in range(shape_5d[1]):
+        print('begin channel', i)
+        if write_channels_as_separate_files:
+            pyramid = []
+
+        volume = np.array(ims_file.hf['DataSet'][f'ResolutionLevel {resolution_level_lock}']['TimePoint 0'][f'Channel {i}']['Data'])
+        volume_sitk = sitk.GetImageFromArray(volume)
+        volume = volume.reshape([1, 1] + list(volume.shape))
+
+        if i == 0 or write_channels_as_separate_files:
+            pyramid.append(volume)
+        else:
+            pyramid[0] = np.append(pyramid[0], volume, axis=1)
+
+        for j, s in enumerate(multiscale[1:]):
+            scale = s.copy()
+            scale.reverse()
+            resampled = sitk.GetArrayFromImage(
+                resample_volume(volume_sitk, new_spacing=scale, interpolator=interpolator))
+            resampled = resampled.reshape([1, 1] + list(resampled.shape))
+
+            if i == 0 or write_channels_as_separate_files:
+                pyramid.append(resampled)
+            else:
+                level = j + 1
+                pyramid[level] = np.append(pyramid[level], resampled, axis=1)
+
+        if write_channels_as_separate_files:
+            write_as_ome_zarr(f'{out_path}_channel_{i}', pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
+        print('finish channel', i)
+
+    if not write_channels_as_separate_files:
+        write_as_ome_zarr(out_path, pyramid, chunk_shape_5d, coordinate_transformations=coordinate_transformations)
 
 
 # todo: this is basically the same as create_ome_zarr_from_raw -> refactor
@@ -330,6 +404,12 @@ if __name__ == '__main__':
                                       chunk_shape=args.chunksize,
                                       interpolator=interpolator_mapping[args.interpolator],
                                       coordinate_transformations=transformations)
+    elif args.files[0].endswith('ims'):
+        create_ome_zarr_from_imaris(args.files[0],
+                                    args.outpath,
+                                    chunk_shape=args.chunksize,
+                                    interpolator=interpolator_mapping[args.interpolator],
+                                    coordinate_transformations=transformations)
     else:
         create_ome_zarr_from_raw([f for f in args.files for _ in range(args.numduplicates)],
                                  args.size,
