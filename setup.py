@@ -8,13 +8,13 @@ with open('requirements.txt') as f:
 
 setup(
    name='convert_to_ome_zarr',
-   version='1.0',
+   version='1.0.0',
    description='Utility to create OME-Zarr data sets from other file formats.',
    license="MIT",
    long_description=long_description,
    author='Lukas Herzberger',
    author_email='herzberger.lukas@gmail.com',
-   url="https://github.com/JolifantoBambla/raw-to-ome-zarr",
+   url="https://github.com/JolifantoBambla/convert-to-ome-zarr",
    packages=['convert_to_ome_zarr'],
    install_requires=requirements,
    scripts=[
