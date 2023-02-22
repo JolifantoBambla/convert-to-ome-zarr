@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import argparse
 from os import PathLike
 import os
 import shutil
@@ -261,12 +260,12 @@ class RawDataSource(DataSource):
         return self._shape_5d
 
 
-def create_ome_zarr(data_source: DataSource, out_path: FilePath,
-                    write_channels_as_separate_files=True,
-                    chunk_shape: ShapeLike3d = None,
-                    coordinate_transformations: List[List[Dict[str, Any]]] = None,
-                    interpolator=sitk.sitkLinear,
-                    verbose=False):
+def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
+                        write_channels_as_separate_files=True,
+                        chunk_shape: ShapeLike3d = None,
+                        coordinate_transformations: List[List[Dict[str, Any]]] = None,
+                        interpolator=sitk.sitkLinear,
+                        verbose=False):
     if chunk_shape is None:
         chunk_shape = [32, 32, 32]
 

@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import numpy as np
-from create_ome_zarr import create_ome_zarr, INTERPOLATOR_MAPPING, RawDataSource
+from convert_to_ome_zarr import convert_to_ome_zarr, INTERPOLATOR_MAPPING, RawDataSource
 
 
 if __name__ == '__main__':
@@ -23,7 +23,7 @@ if __name__ == '__main__':
         type=int,
         nargs=3,
         default=[32, 32, 32],
-        help="The size of a chunk / brick in the OME-Zarr data set. Defaults to [32, 32, 32]"
+        help="The size of a chunk / brick in the OME-Zarr data set in order 'ZYX'. Defaults to [32, 32, 32]"
     )
     parser.add_argument(
         "--transform",
@@ -53,21 +53,6 @@ if __name__ == '__main__':
     #)
 
     parser.add_argument(
-        "--numduplicates",
-        "-n",
-        type=int,
-        default=1,
-        help="Specifies the number of times each input data set is duplicated in the generated OME-Zarr file. This is "
-             "mainly useful for generating multi-channel datasets from a single channel. Defaults to 1. "
-    )
-    parser.add_argument(
-        "--axisorder",
-        "-a",
-        type=str,
-        default="ZYX",
-        help="The axis order in the input files. Defaults to \"ZYX\"."
-    )
-    parser.add_argument(
         "--verbose",
         "-v",
         action=argparse.BooleanOptionalAction,
@@ -81,6 +66,21 @@ if __name__ == '__main__':
         default=True,
         help="Write channels as separate OME-Zarr files first and combine them afterwards to reduce memory pressure."
              "Defaults to \"True\"."
+    )
+    parser.add_argument(
+        "--numduplicates",
+        "-n",
+        type=int,
+        default=1,
+        help="Specifies the number of times each input data set is duplicated in the generated OME-Zarr file. This is "
+             "mainly useful for generating multi-channel datasets from a single channel. Defaults to 1. "
+    )
+    parser.add_argument(
+        "--axisorder",
+        "-a",
+        type=str,
+        default="ZYX",
+        help="The axis order in the input files. Defaults to \"ZYX\"."
     )
     parser.add_argument(
         "--size",
@@ -102,7 +102,7 @@ if __name__ == '__main__':
         "-o",
         type=str,
         required=True,
-        help="The file path the OME-Zarr gets be written to."
+        help="The file path the OME-Zarr is written to."
     )
     parser.add_argument(
         "files",
@@ -121,10 +121,10 @@ if __name__ == '__main__':
 
     data_source = RawDataSource(args.files, args.size, dtype_mapping[args.dtype], args.axisorder)
 
-    create_ome_zarr(data_source,
-                    args.outpath,
-                    chunk_shape=args.chunksize,
-                    interpolator=INTERPOLATOR_MAPPING[args.interpolator],
-                    coordinate_transformations=transformations,
-                    write_channels_as_separate_files=args.write_separate_channels,
-                    verbose=args.verbose)
+    convert_to_ome_zarr(data_source,
+                        args.outpath,
+                        chunk_shape=args.chunksize,
+                        interpolator=INTERPOLATOR_MAPPING[args.interpolator],
+                        coordinate_transformations=transformations,
+                        write_channels_as_separate_files=args.write_separate_channels,
+                        verbose=args.verbose)

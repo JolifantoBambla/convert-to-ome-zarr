@@ -1,21 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import numpy as np
-from create_ome_zarr import create_ome_zarr, INTERPOLATOR_MAPPING, ImarisDataSource
+from convert_to_ome_zarr import convert_to_ome_zarr, INTERPOLATOR_MAPPING, ImarisDataSource
 
 
 if __name__ == '__main__':
-    # todo: Allow more dtypes #2
-    dtype_mapping = {
-        'uint16': np.uint16,
-        'uint8': np.uint8,
-        'float': float
-    }
-
     parser = argparse.ArgumentParser(
-        description="Convert .raw files to the OME-Zarr format. If more than one file is given, each file will be "
-                    "stored as a separate channel in the OME-Zarr data set. All files must have the same dimension. "
+        description="Convert a Imaris .ims file to the OME-Zarr format."
     )
     parser.add_argument(
         "--chunksize",
@@ -23,7 +15,7 @@ if __name__ == '__main__':
         type=int,
         nargs=3,
         default=[32, 32, 32],
-        help="The size of a chunk / brick in the OME-Zarr data set. Defaults to [32, 32, 32]"
+        help="The size of a chunk / brick in the OME-Zarr data set in order 'ZYX'. Defaults to [32, 32, 32]"
     )
     parser.add_argument(
         "--transform",
@@ -53,14 +45,6 @@ if __name__ == '__main__':
     #)
 
     parser.add_argument(
-        "--resolution_level_lock",
-        "-r",
-        type=int,
-        nargs=1,
-        default=0,
-        help="Defines the Imaris file's resolution level to use for generating the OME-Zarr. Defaults to \"0\"."
-    )
-    parser.add_argument(
         "--verbose",
         "-v",
         action=argparse.BooleanOptionalAction,
@@ -76,17 +60,25 @@ if __name__ == '__main__':
              "Defaults to \"True\"."
     )
     parser.add_argument(
+        "--resolution_level_lock",
+        "-r",
+        type=int,
+        nargs=1,
+        default=0,
+        help="Defines the Imaris file's resolution level to use for generating the OME-Zarr. Defaults to \"0\"."
+    )
+    parser.add_argument(
         "--outpath",
         "-o",
         type=str,
         required=True,
-        help="The file path the OME-Zarr gets be written to."
+        help="The file path the OME-Zarr is written to."
     )
     parser.add_argument(
         "file",
         type=str,
         nargs=1,
-        help="The list of files to include in the OME-Zarr."
+        help="The Imaris file to convert to OME-Zarr"
     )
     args = parser.parse_args()
 
@@ -99,10 +91,10 @@ if __name__ == '__main__':
 
     data_source = ImarisDataSource(args.file)
 
-    create_ome_zarr(data_source,
-                    args.outpath,
-                    chunk_shape=args.chunksize,
-                    interpolator=INTERPOLATOR_MAPPING[args.interpolator],
-                    coordinate_transformations=transformations,
-                    write_channels_as_separate_files=args.write_separate_channels,
-                    verbose=args.verbose)
+    convert_to_ome_zarr(data_source,
+                        args.outpath,
+                        chunk_shape=args.chunksize,
+                        interpolator=INTERPOLATOR_MAPPING[args.interpolator],
+                        coordinate_transformations=transformations,
+                        write_channels_as_separate_files=args.write_separate_channels,
+                        verbose=args.verbose)
