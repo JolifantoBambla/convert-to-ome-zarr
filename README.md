@@ -132,7 +132,7 @@ Example data can be found here:
 
 E.g., for creating an OME-Zarr data set with two channels from the [bunny data set](http://cdn.klacansky.com/open-scivis-datasets/bunny/bunny_512x512x361_uint16.raw) run:
 ```
-    python src/create_ome_zarr_from_raw.py \
+    ome_zarr_from_raw \
         -s 361 512 512 \
         -d uint16 \
         -t 0.5 0.337891 0.337891 \
