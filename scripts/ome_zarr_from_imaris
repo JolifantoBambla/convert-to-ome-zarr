@@ -77,7 +77,6 @@ if __name__ == '__main__':
     parser.add_argument(
         "file",
         type=str,
-        nargs=1,
         help="The Imaris file to convert to OME-Zarr"
     )
     args = parser.parse_args()
