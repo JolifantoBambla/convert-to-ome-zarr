@@ -14,8 +14,7 @@ if __name__ == '__main__':
     }
 
     parser = argparse.ArgumentParser(
-        description="Convert .raw files to the OME-Zarr format. If more than one file is given, each file will be "
-                    "stored as a separate channel in the OME-Zarr data set. All files must have the same dimension. "
+        description="Convert a .raw file to the OME-Zarr format."
     )
     parser.add_argument(
         "--chunksize",
@@ -108,7 +107,7 @@ if __name__ == '__main__':
         "files",
         type=str,
         nargs='+',
-        help="The list of files to include in the OME-Zarr."
+        help="The file to convert to OME-Zarr."
     )
     args = parser.parse_args()
 
@@ -119,7 +118,7 @@ if __name__ == '__main__':
         transform.insert(0, 1.)
         transformations = [dict(type="scale", scale=transform)]
 
-    data_source = RawDataSource(args.files, args.size, dtype_mapping[args.dtype], args.axisorder)
+    data_source = RawDataSource(args.files, args.size, dtype_mapping[args.dtype], args.axisorder, args.numduplicates)
 
     convert_to_ome_zarr(data_source,
                         args.outpath,

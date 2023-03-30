@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from math import floor
 from os import PathLike
 import os
 import shutil
@@ -245,16 +246,17 @@ class OmeTiffDataSource(DataSource):
 
 
 class RawDataSource(DataSource):
-    def __init__(self, files: List[FilePath], shape: ShapeLike3d, dtype: DTypeLike, axis_order='ZYX'):
+    def __init__(self, files: [FilePath], shape: ShapeLike3d, dtype: DTypeLike, axis_order='ZYX', num_duplicates=1):
         assert len(axis_order) == 3, f'Expected axis order to have length 3, got {axis_order}'
         assert all([a in axis_order.upper() for a in'ZYX']), f'Expected axis order to contain X, Y, and Z, got {axis_order.upper()}'
-        self._files = files
-        self._shape_5d = [1, len(files)] + list(shape)
+        self._shape_5d = [1, num_duplicates * len(files)] + list(shape)
         self._dtype = dtype
         self._axis_order = axis_order
+        self._num_duplicates = num_duplicates
+        self._file_paths = files
 
     def get_channel(self, channel_index: int) -> NDArray:
-        return move_axes(read_raw(self._files[channel_index], self._shape_5d[2:], self._dtype), f'TC{self._axis_order}')
+        return move_axes(read_raw(self._file_paths[floor(channel_index / self._num_duplicates)], self._shape_5d[2:], self._dtype), f'TC{self._axis_order}')
 
     def get_shape_5d(self) -> ShapeLike5d:
         return self._shape_5d
