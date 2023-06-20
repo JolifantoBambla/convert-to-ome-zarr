@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import gc
 from math import floor
 from os import PathLike
 import os
@@ -280,18 +281,39 @@ def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
         if verbose:
             print('processing channel', i)
         if write_channels_as_separate_files:
+            # free any memory from previous iterations
+            del pyramid
+            gc.collect()
             pyramid = []
 
+        if i != 0 and isinstance(data_source, RawDataSource) and write_channels_as_separate_files:
+            shutil.copytree(f'{out_path}_channel_0', f'{out_path}_channel_{i}')
+            continue
+
         volume = data_source.get_channel(i)
+        if verbose:
+            print('read channel', i)
+
         volume_sitk = sitk.GetImageFromArray(volume)
+        if verbose:
+            print('... and converted it to sitk')
+
         volume = volume.reshape([1, 1] + list(volume.shape))
+        if verbose:
+            print('... and reshaped it to', [1, 1] + list(volume.shape))
 
         if i == 0 or write_channels_as_separate_files:
             pyramid.append(volume)
         else:
             pyramid[0] = np.append(pyramid[0], volume, axis=1)
 
+        # free memory as early as possible
+        del volume
+        gc.collect()
+
         for j, s in enumerate(multiscale[1:]):
+            if verbose:
+                print('computing resolution level', j + 1)
             scale = s.copy()
             scale.reverse()
             resampled = sitk.GetArrayFromImage(
@@ -304,11 +326,19 @@ def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
                 level = j + 1
                 pyramid[level] = np.append(pyramid[level], resampled, axis=1)
 
+        # free memory as early as possible
+        del volume_sitk
+        gc.collect()
+
         if write_channels_as_separate_files:
+            if verbose:
+                print('writing channel', i)
+
             write_ome_zarr(f'{out_path}_channel_{i}',
                            pyramid,
                            chunk_shape_5d,
                            coordinate_transformations=coordinate_transformations)
+
         if verbose:
             print('finished processing channel', i)
 

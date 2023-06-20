@@ -10,7 +10,7 @@ if __name__ == '__main__':
     dtype_mapping = {
         'uint16': np.uint16,
         'uint8': np.uint8,
-        'float': float
+        'float': np.single,
     }
 
     parser = argparse.ArgumentParser(
