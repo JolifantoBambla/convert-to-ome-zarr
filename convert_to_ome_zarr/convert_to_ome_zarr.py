@@ -4,8 +4,12 @@ from math import floor
 from os import PathLike
 import os
 import shutil
+from tempfile import mkdtemp
 from typing import List, Tuple, Union, Dict, Any
 
+import dask
+import dask.array as da
+import dask_image.imread
 import hdf5plugin  # needed for reading ims files (unfortunately, it is not imported in 'imaris_ims_file_reader')
 import imaris_ims_file_reader.ims as ims
 import json
@@ -14,6 +18,7 @@ from numpy.typing import DTypeLike, NDArray
 from ome_zarr.io import parse_url
 from ome_zarr.writer import write_multiscale
 import tifffile as tf
+from scipy import ndimage
 import SimpleITK as sitk
 import zarr
 
@@ -47,12 +52,15 @@ INTERPOLATOR_MAPPING = {
     }
 
 
-def read_raw(file_name: FilePath, shape: ShapeLike5d, dtype: DTypeLike) -> NDArray:
-    arr = np.fromfile(file_name, dtype=dtype)
-    return arr.reshape(shape)
+_DASK_CHUNK_SHAPE = (512, 512, 512)
 
 
-def move_axes(arr: NDArray, input_axes: str, target_axes='STCZYX') -> NDArray:
+def read_raw(file_name: FilePath, shape: ShapeLike5d, dtype: DTypeLike) -> da.Array:
+    arr = da.from_array(np.fromfile(file_name, dtype=dtype))
+    return arr.reshape(shape).rechunk(chunks=_DASK_CHUNK_SHAPE)
+
+
+def move_axes(arr: NDArray | da.Array, input_axes: str, target_axes='STCZYX') -> NDArray | da.Array:
     """
     Rearranges the axes of a given array such that they are ordered based on a given ordering.
     If the order of the axes in the input array matches the desired order, this is a no-op.
@@ -127,8 +135,10 @@ def resample_volume(volume: sitk.Image, interpolator=sitk.sitkLinear, new_spacin
     )
 
 
-def write_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: ShapeLike5d,
-                      coordinate_transformations: List[List[Dict[str, Any]]] = None):
+def write_ome_zarr(out_path: FilePath,
+                   pyramid: List[NDArray | da.Array],
+                   chunk_shape: ShapeLike5d,
+                   coordinate_transformations: List[List[Dict[str, Any]]] = None):
     """
     Writes a given sequence of numpy arrays as an OME-Zarr file to a given path.
 
@@ -160,7 +170,10 @@ def write_ome_zarr(out_path: FilePath, pyramid: List[NDArray], chunk_shape: Shap
         axes="tczyx",
         chunks=chunk_shape,
         # according to the docs this is the recommended way to specify the chunk shape now, but it has no effect...
-        storage_options=dict(chunks=chunk_shape),
+        storage_options=dict(
+            chunks=chunk_shape,
+            dimension_separator='/'
+        ),
         coordinateTransformations=coordinate_transformations,
     )
 
@@ -185,7 +198,8 @@ def combine_ome_zarr_channels(out_path: FilePath, num_scales: int, target_shape:
     @param remove_individual_files: indicates if the individual OME-Zarr files should be removed from the file system after combinding them. Defaults to True.
     """
     if remove_individual_files:
-        os.replace(f'{out_path}_channel_0', f'{out_path}')
+        #os.replace(f'{out_path}_channel_0', f'{out_path}')
+        shutil.copytree(f'{out_path}_channel_0', f'{out_path}')
     else:
         shutil.copytree(f'{out_path}_channel_0', f'{out_path}')
 
@@ -198,15 +212,18 @@ def combine_ome_zarr_channels(out_path: FilePath, num_scales: int, target_shape:
             json.dump(meta, zarray_file, sort_keys=True, indent=4)
 
     for c in range(1, target_shape[1]):
+        print(c, num_scales)
         for s in range(num_scales):
+            print('copying channel', c, f'{out_path}_channel_{c}/{s}/0/0', f'{out_path}/{s}/0/{c}')
             shutil.move(f'{out_path}_channel_{c}/{s}/0/0', f'{out_path}/{s}/0/{c}')
         if remove_individual_files:
-            shutil.rmtree(f'{out_path}_channel_{c}')
+            pass
+            #shutil.rmtree(f'{out_path}_channel_{c}')
 
 
 class DataSource(ABC):
     @abstractmethod
-    def get_channel(self, channel_index: int) -> NDArray:
+    def get_channel(self, channel_index: int) -> da.Array:
         pass
 
     @abstractmethod
@@ -219,15 +236,16 @@ class ImarisDataSource(DataSource):
         self._ims_file = ims(file_path, ResolutionLevelLock=resolution_level_lock)
         self._resolution_level_lock = resolution_level_lock
 
-    def get_channel(self, channel_index: int) -> NDArray:
-        return np.array(self
-                        ._ims_file
-                        .hf
-                        ['DataSet']
-                        [f'ResolutionLevel {self._resolution_level_lock}']
-                        ['TimePoint 0']
-                        [f'Channel {channel_index}']
-                        ['Data'])
+    def get_channel(self, channel_index: int) -> da.Array:
+        return da.from_array(
+            np.array(self._ims_file.hf
+                ['DataSet']
+                [f'ResolutionLevel {self._resolution_level_lock}']
+                ['TimePoint 0']
+                [f'Channel {channel_index}']
+                ['Data']
+            )
+        ).rechunk([1, 1] + list(_DASK_CHUNK_SHAPE))
 
     def get_shape_5d(self) -> ShapeLike5d:
         return self._ims_file.shape
@@ -237,9 +255,22 @@ class OmeTiffDataSource(DataSource):
     def __init__(self, file_path: FilePath):
         # tiff is expected to have 4 dimensions (channel, depth, height, width)
         with tf.TiffFile(file_path) as tiff_file:
-            self._data = move_axes(tf.imread(file_path), 'CZYX'[:4-len(tiff_file.series[0].axes)] + tiff_file.series[0].axes.upper())
+            print(tiff_file, tiff_file.series[0].axes.upper(), 'CZYX'[:4-len(tiff_file.series[0].axes)] + tiff_file.series[0].axes.upper())
+            self._data = move_axes(
+                # todo: add reshape parameter
+                da.reshape(dask_image.imread.imread(file_path), (1402, 3, 5192, 2947,)),
+                'CZYX'[:4-len(tiff_file.series[0].axes)] + tiff_file.series[0].axes.upper()
+            ).rechunk([1] + list(_DASK_CHUNK_SHAPE))
+        print('read ome-tiff', self._data)
 
-    def get_channel(self, channel_index: int) -> NDArray:
+        #with tf.TiffFile(file_path) as tiff_file:
+        #    foo = da.from_array(tf.imread(file_path))
+        #    gc.collect()
+        #    print('read ome-tiff')
+        #    self._data = move_axes(foo, 'CZYX'[:4-len(tiff_file.series[0].axes)] + tiff_file.series[0].axes.upper())
+        #    print('self._data initialized', type(self._data))
+
+    def get_channel(self, channel_index: int) -> da.Array:
         return self._data[channel_index]
 
     def get_shape_5d(self) -> ShapeLike5d:
@@ -256,7 +287,7 @@ class RawDataSource(DataSource):
         self._num_duplicates = num_duplicates
         self._file_paths = files
 
-    def get_channel(self, channel_index: int) -> NDArray:
+    def get_channel(self, channel_index: int) -> da.Array:
         return move_axes(read_raw(self._file_paths[floor(channel_index / self._num_duplicates)], self._shape_5d[2:], self._dtype), f'TC{self._axis_order}')
 
     def get_shape_5d(self) -> ShapeLike5d:
@@ -276,15 +307,29 @@ def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
     chunk_shape_5d = [1, 1] + list(chunk_shape)
 
     multiscale = compute_multiscale_3d(shape_5d[2:], chunk_shape)
-    pyramid = []
+    if verbose:
+        print('computed multiscale:', multiscale)
+
+    scale_factors_between_levels = []
+    for i, scale in enumerate(multiscale[1:]):
+        scale_factors_between_levels.append([multiscale[i][s] / scale[s] for s in range(len(scale))])
+    if verbose:
+        print('scale factors between levels:', scale_factors_between_levels)
+
+    if not write_channels_as_separate_files:
+        pyramid = []
+
     for i in range(shape_5d[1]):
         if verbose:
             print('processing channel', i)
         if write_channels_as_separate_files:
             # free any memory from previous iterations
-            del pyramid
-            gc.collect()
             pyramid = []
+            gc.collect()
+
+        # todo: remove this!!!
+        if i == 0:
+            continue
 
         if i != 0 and isinstance(data_source, RawDataSource) and write_channels_as_separate_files:
             shutil.copytree(f'{out_path}_channel_0', f'{out_path}_channel_{i}')
@@ -294,13 +339,22 @@ def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
         if verbose:
             print('read channel', i)
 
-        volume_sitk = sitk.GetImageFromArray(volume)
-        if verbose:
-            print('... and converted it to sitk')
+        if not write_channels_as_separate_files:
+            volume = volume.reshape([1, 1] + list(volume.shape))
+            if verbose:
+                print('... and reshaped it to', volume.shape)
 
-        volume = volume.reshape([1, 1] + list(volume.shape))
-        if verbose:
-            print('... and reshaped it to', [1, 1] + list(volume.shape))
+        print('debug', volume)
+
+        #volume_dtype = volume.dtype
+        volume_shape = volume.shape
+        #print(volume_dtype, volume_shape)
+        #tmp_filename = os.path.join(mkdtemp(), '__tmp_volume__.raw')
+        #volume.tofile(tmp_filename)
+        #del volume
+        #gc.collect()
+
+        #volume = np.memmap(tmp_filename, dtype=volume_dtype, shape=volume_shape, mode='r')
 
         if i == 0 or write_channels_as_separate_files:
             pyramid.append(volume)
@@ -312,13 +366,33 @@ def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
         gc.collect()
 
         for j, s in enumerate(multiscale[1:]):
+            #if j < 4:
+            #    continue
+            #else:
+            #    continue
             if verbose:
                 print('computing resolution level', j + 1)
-            scale = s.copy()
-            scale.reverse()
-            resampled = sitk.GetArrayFromImage(
-                resample_volume(volume_sitk, new_spacing=scale, interpolator=interpolator))
-            resampled = resampled.reshape([1, 1] + list(resampled.shape))
+            scale = [1. / dim for dim in s]
+            zoom = scale_factors_between_levels[j]  # scale if write_channels_as_separate_files else [1., 1.] + scale
+
+            print('debug', scale, zoom)
+            resampled_shape = (
+            int(volume_shape[0] * scale[0]), int(volume_shape[1] * scale[1]), int(volume_shape[2] * scale[2]),)
+            print('debug', resampled_shape)
+
+            resampled = da.from_array(ndimage.zoom(
+                pyramid[j],
+                zoom=zoom,
+                order=1,  # default = 3
+                prefilter=False  # prefiltering would produce better quality but allocates 64-bit float arrays
+            )).rechunk(_DASK_CHUNK_SHAPE if write_channels_as_separate_files else [1, 1] + list(_DASK_CHUNK_SHAPE))
+
+            if verbose:
+                print('resampled volume')
+
+            print('debug', resampled_shape, resampled)
+
+            #resampled.tofile(f'{out_path}_channel_{i}_resampled_{j}')
 
             if i == 0 or write_channels_as_separate_files:
                 pyramid.append(resampled)
@@ -326,13 +400,18 @@ def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
                 level = j + 1
                 pyramid[level] = np.append(pyramid[level], resampled, axis=1)
 
-        # free memory as early as possible
-        del volume_sitk
+            gc.collect()
+
         gc.collect()
 
         if write_channels_as_separate_files:
             if verbose:
                 print('writing channel', i)
+
+            with dask.config.set(**{'array.slicing.split_large_chunks': False}):
+                for level_index, pyramid_level in enumerate(pyramid):
+                    pyramid[level_index] = pyramid[level_index].reshape([1, 1] + list(pyramid_level.shape))
+            gc.collect()
 
             write_ome_zarr(f'{out_path}_channel_{i}',
                            pyramid,
@@ -342,6 +421,9 @@ def convert_to_ome_zarr(data_source: DataSource, out_path: FilePath,
         if verbose:
             print('finished processing channel', i)
 
+        gc.collect()
+
+    print(shape_5d)
     if write_channels_as_separate_files:
         combine_ome_zarr_channels(out_path, len(multiscale), shape_5d)
     else:

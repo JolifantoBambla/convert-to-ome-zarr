@@ -8,6 +8,7 @@ from convert_to_ome_zarr import convert_to_ome_zarr, INTERPOLATOR_MAPPING, RawDa
 if __name__ == '__main__':
     # todo: Allow more dtypes #2
     dtype_mapping = {
+        'int16': np.int16,
         'uint16': np.uint16,
         'uint8': np.uint8,
         'float': np.single,

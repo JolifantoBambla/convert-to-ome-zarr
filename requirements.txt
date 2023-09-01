@@ -1,9 +1,12 @@
+dask==2023.6.0
+dask-image==2023.3.0
 h5py==3.8.0
 hdf5plugin==4.1.1
 imaris_ims_file_reader==0.1.8
 numpy==1.23.3
 ome_zarr==0.6.0
 pyometiff==0.0.10
+scipy==1.10.1
 SimpleITK==2.2.0
 tifffile==2022.8.12
 zarr==2.12.0
